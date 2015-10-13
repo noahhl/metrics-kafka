@@ -69,49 +69,50 @@ public class TopicReporter extends AbstractPollingReporter implements MetricProc
     }
 
     public void processMeter(MetricName name, Metered meter, Context context) {
-        final String header = "# time,count,1 min rate,mean rate,5 min rate,15 min rate";
+        final Long time = TimeUnit.MILLISECONDS.toSeconds(clock.time() - startTime);
+        final String payload = format("{\"metric\": \"%s\", \"broker\": %s, \"time\": \"%d\", \"type\": \"meter\", \"count\": %s, \"1 min rate\": %s, \"mean rate\": %s," 
+        + "\"5 min rate\": %s, \"15 min rate\": %s}", name, prefix, time, valueOf(meter.count()), meter.oneMinuteRate(), meter.meanRate(),
+        meter.fiveMinuteRate(), meter.fifteenMinuteRate()); 
         final Producer producer = context.getProducer();
-        final String topic = "%s-metrics-meter".format(prefix);
-        final String message = valueOf(meter.count()) + ',' + meter.oneMinuteRate() + ',' + meter.meanRate() + ','
-                + meter.fiveMinuteRate() + ',' + meter.fifteenMinuteRate();
-        send(producer, header, topic, message);
+        send(producer, "_stats", payload);
     }
 
     public void processCounter(MetricName name, Counter counter, Context context) {
-        final String header = "# time,count";
+        final Long time = TimeUnit.MILLISECONDS.toSeconds(clock.time() - startTime);
+        final String payload = format("{\"metric\": \"%s\", \"broker\": %s, \"time\": \"%d\", \"type\": \"counter\", \"count\": %s}", 
+         name, prefix, time, valueOf(counter.count()));
         final Producer producer = context.getProducer();
-        final String topic = "%s-metrics-counter".format(prefix);
-        final String message = valueOf(counter.count());
-        send(producer, header, topic, message);
+        send(producer, "_stats", payload);
     }
 
     public void processHistogram(MetricName name, Histogram histogram, Context context) {
-        final String header = "# time,min,max,mean,median,stddev,95%,99%,99.9%";
-        final Producer producer = context.getProducer();
         final Snapshot snapshot = histogram.getSnapshot();
-        final String topic="%s-metrics-histogram".format(prefix);
-        final String message = valueOf(histogram.min()) + ',' + histogram.max() + ',' + histogram.mean() + ','
-                + snapshot.getMedian() + ',' + histogram.stdDev() + ',' + snapshot.get95thPercentile() + ',' + snapshot.get99thPercentile() + ','
-                + snapshot.get999thPercentile();
-        send(producer, header, topic, message);
+        final Long time = TimeUnit.MILLISECONDS.toSeconds(clock.time() - startTime);
+        final String payload = format("{\"metric\": \"%s\", \"broker\": %s, \"time\": \"%d\", \"type\": \"histogram\", \"min\": %s, \"max\": %s," 
+        + "\"mean\": %s, \"median\": %s, \"stddev\": %s, \"95th\": %s, \"99th\": %s, \"99.9th\": %s}", name, prefix, time, valueOf(histogram.min()),
+        histogram.max(), histogram.mean(), snapshot.getMedian(), histogram.stdDev(), snapshot.get95thPercentile(), snapshot.get99thPercentile(),
+        snapshot.get999thPercentile());
+        final Producer producer = context.getProducer();
+        send(producer, "_stats", payload);
     }
 
     public void processTimer(MetricName name, Timer timer, Context context) {
-        final String header = "# time,min,max,mean,median,stddev,95%,99%,99.9%";
-        final Producer producer = context.getProducer();
         final Snapshot snapshot = timer.getSnapshot();
-        final String topic="%s-metrics-timer".format(prefix);
-        final String  message = valueOf(timer.min()) + ',' + timer.max() + ',' + timer.mean() + ',' + snapshot.getMedian() + ','
-                + timer.stdDev() + ',' + snapshot.get95thPercentile() + ',' + snapshot.get99thPercentile() + ',' + snapshot.get999thPercentile();
-        send(producer, header, topic, message);
+        final Long time = TimeUnit.MILLISECONDS.toSeconds(clock.time() - startTime);
+        final String payload = format("{\"metric\": \"%s\", \"broker\": %s, \"time\": \"%d\", \"type\": \"timer\", \"min\": %s, \"max\": %s," 
+        + "\"mean\": %s, \"median\": %s, \"stddev\": %s, \"95th\": %s, \"99th\": %s, \"99.9th\": %s}", name, prefix, time, valueOf(timer.min()),
+        timer.max(), timer.mean(), snapshot.getMedian(), timer.stdDev(), snapshot.get95thPercentile(), snapshot.get99thPercentile(),
+        snapshot.get999thPercentile());
+        final Producer producer = context.getProducer();
+        send(producer, "_stats", payload);
     }
 
     public void processGauge(MetricName name, Gauge<?> gauge, Context context){
-        final String header = "# time,finalue";
+        final Long time = TimeUnit.MILLISECONDS.toSeconds(clock.time() - startTime);
+        final String payload = format("{\"metric\": \"%s\", \"broker\": %s, \"time\": \"%d\", \"type\": \"gauge\", \"value\": %s}", 
+         name, prefix, time, gauge.value().toString());
         final Producer producer = context.getProducer();
-        final String topic = "%s-metrics-gauge".format(prefix);
-        final String message = gauge.value().toString();
-        send(producer, header, topic, message);
+        send(producer, "_stats", payload);
     }
 
     @Override
@@ -143,10 +144,9 @@ public class TopicReporter extends AbstractPollingReporter implements MetricProc
         return producer;
     }
 
-    private void send(Producer producer,String header, String topic, String message) {
-        final Long time = TimeUnit.MILLISECONDS.toSeconds(clock.time() - startTime);
+    private void send(Producer producer, String topic, String payload) {
         try {
-            producer.send(new KeyedMessage(topic, format("%s\n%d,%s", header, time, message).getBytes("UTF-8")));
+            producer.send(new KeyedMessage(topic, payload.getBytes("UTF-8")));
         } catch (UnsupportedEncodingException e) {
             throw new RuntimeException(e);
         }
